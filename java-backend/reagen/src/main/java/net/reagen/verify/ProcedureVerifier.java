@@ -55,6 +55,7 @@ public class ProcedureVerifier {
         // --- синтаксис generated Java (эвристики + javac если доступен)
         try {
             String code = new ProcedureGenerator().generate(p);
+            r.setGeneratedJava(code);
             checkBraces(code, r);
             String javacErr = JavacCheck.tryCompile(code, p.name);
             if (javacErr != null) r.error("generated", "JAVAC", "Сгенерированный код не компилируется: " + javacErr);

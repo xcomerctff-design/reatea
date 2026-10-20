@@ -32,6 +32,31 @@ public class GameSimulator {
         public final List<String> spawnedEntities = new ArrayList<>();
         public final List<String> givenItems = new ArrayList<>();
         public final Map<String, Object> finalVariables = new LinkedHashMap<>();
+
+        /** JSON трассировки игрового теста для панели предпросмотра редактора. */
+        public String toJson() {
+            StringBuilder sb = new StringBuilder("{");
+            sb.append("\"returnValue\":").append(returnValue == null ? "null" : "\"" + returnValue + "\"");
+            sb.append(",\"chatLog\":").append(arr(chatLog));
+            sb.append(",\"spawnedEntities\":").append(arr(spawnedEntities));
+            sb.append(",\"givenItems\":").append(arr(givenItems));
+            sb.append(",\"finalVariables\":{");
+            int i = 0;
+            for (var e : finalVariables.entrySet()) {
+                if (i++ > 0) sb.append(',');
+                sb.append('"').append(e.getKey()).append("\":").append(e.getValue());
+            }
+            sb.append("}}");
+            return sb.toString();
+        }
+        private static String arr(List<String> xs) {
+            StringBuilder sb = new StringBuilder("[");
+            for (int i = 0; i < xs.size(); i++) { if (i > 0) sb.append(','); sb.append('"').append(escJson(xs.get(i))).append('"'); }
+            return sb.append(']').toString();
+        }
+        private static String escJson(String s) {
+            return s.replace("\\", "\\\\").replace("\"", "\\\"");
+        }
     }
 
     // ---------- мок-мир ----------
@@ -45,7 +70,6 @@ public class GameSimulator {
     /** Ванильные эффекты (MobEffects.*) — то, что умеет генерировать player_addeffect. */
     static final Set<String> KNOWN_EFFECTS = Set.of(
         "REGENERATION", "SPEED", "POISON", "WEAKNESS", "STRENGTH");
-
     record MockPos(double x, double y, double z) {}
 
     static class MockLevel {
@@ -209,6 +233,13 @@ public class GameSimulator {
                 if (dur < 0) throw new SimException(el.id, "SIM_NEGATIVE_DURATION",
                     "Negative effect duration (" + dur + " ticks)");
                 String ampS = el.field("AMPLIFIER");
+                if (ampS == null) {
+                    ProcedureElement.Input ain = el.input("AMPLIFIER");
+                    if (ain != null && ain.connectedElementId != null) {
+                        ProcedureElement ae = p.byId(ain.connectedElementId);
+                        if (ae != null && "math_number".equals(ae.type)) ampS = ae.field("NUM");
+                    }
+                }
                 int amp = ampS == null ? 0 : (int) parseNum(ampS, el);
                 if (amp < 0 || amp > 255)
                     throw new SimException(el.id, "SIM_BAD_AMPLIFIER", "Effect amplifier out of 0..255: " + amp);

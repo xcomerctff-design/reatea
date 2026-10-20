@@ -231,8 +231,16 @@ public class ElementVisitor {
                 case "player_addeffect" -> {
                     String effect = stringLiteral(p, cur.input("EFFECT"), scope);
                     String dur = expression(p, cur.input("DURATION"), scope);
+                    // AMPLIFIER — поле с shadow-числом: сначала собственный field, затем connected math_number
                     String ampS = cur.field("AMPLIFIER");
-                    int amp = ampS == null ? 0 : Integer.parseInt(ampS);
+                    if (ampS == null) {
+                        ProcedureElement.Input ain = cur.input("AMPLIFIER");
+                        if (ain != null && ain.connectedElementId != null) {
+                            ProcedureElement ae = p.byId(ain.connectedElementId);
+                            if (ae != null && "math_number".equals(ae.type)) ampS = ae.field("NUM");
+                        }
+                    }
+                    int amp = ampS == null ? 0 : Integer.parseInt(ampS.trim());
                     if (amp < 0 || amp > 255) throw new RuntimeException("player_addeffect: AMPLIFIER вне диапазона 0..255: " + amp);
                     sink.imports.add("net.minecraft.world.effect.MobEffectInstance");
                     sink.imports.add("net.minecraft.world.effect.MobEffects");
