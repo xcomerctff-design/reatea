@@ -1,3 +1,2 @@
-*.jar
-target/
-build/
+*.class
+out/

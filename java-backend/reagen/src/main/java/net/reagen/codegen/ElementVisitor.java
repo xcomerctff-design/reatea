@@ -36,6 +36,8 @@ public class ElementVisitor {
             case "entity_gety" -> "(" + entVar(el) + ".getY())";
             case "entity_getz" -> "(" + entVar(el) + ".getZ())";
             case "itemstack_count" -> "(" + isVar(el) + ".getCount())";
+            case "player_gethealth" -> "(_ent instanceof Player __ph ? (double) __ph.getHealth() : 0.0)";
+            case "player_issurvival" -> "(_ent instanceof Player __ps && __ps.isSurvival())";
             case "logic_compare" -> {
                 String a = expression(p, el.input("A"), scope);
                 String b = expression(p, el.input("B"), scope);
@@ -86,17 +88,24 @@ public class ElementVisitor {
         return v == null ? "_entity" : v;
     }
 
+    /** Строковая координата (выражение или inline-литерал) для createByName. */
+    private static String stringLiteral(Procedure p, ProcedureElement.Input in, Scope scope) {
+        if (in == null || in.connectedElementId == null) return "\"\"";
+        ProcedureElement src = p.byId(in.connectedElementId);
+        if (src != null && "text".equals(src.type)) return src.field("TEXT");
+        throw new RuntimeException("ожидается текстовый литерал, получен блок: " + (src == null ? "?" : src.type));
+    }
+
     /** Статический тип выражения по его корневому блоку (для type-check валидатора). */
-    private static McType valueType(Scope scope, ProcedureElement el) {
+    public static McType valueType(Scope scope, ProcedureElement el) {
         if (el == null) return null;
         return switch (el.type) {
             case "math_number", "itemstack_count", "math_arithmetic", "coord_x", "coord_y", "coord_z",
-                 "entity_getpos", "entity_gety", "entity_getz" -> McType.NUMBER;
+                 "entity_getpos", "entity_gety", "entity_getz", "player_gethealth" -> McType.NUMBER;
             case "text" -> McType.STRING;
-            case "logic_boolean", "logic_compare", "logic_operation", "not" -> McType.LOGIC;
+            case "logic_boolean", "logic_compare", "logic_operation", "not", "player_issurvival" -> McType.LOGIC;
             case "variables_get" -> scope.typeOf(el.field("VAR"));
-            case "mc_getitemfromslot" -> McType.ITEMSTACK;
-            case "itemstack_make" -> McType.ITEMSTACK;
+            case "mc_getitemfromslot", "itemstack_make" -> McType.ITEMSTACK;
             default -> null; // неизвестно — не блокируем, javac-уровень добьёт при необходимости
         };
     }
@@ -218,6 +227,32 @@ public class ElementVisitor {
                     if (vt != null && vt != McType.ITEMSTACK)
                         throw new RuntimeException("give_item_to_player: ожидается itemstack, получен " + vt + " (блок " + (srcEl == null ? "?" : srcEl.id) + ")");
                     out.add("if (_ent instanceof Player pl) pl.getInventory().add(" + istack + ");");
+                }
+                case "player_addeffect" -> {
+                    String effect = stringLiteral(p, cur.input("EFFECT"), scope);
+                    String dur = expression(p, cur.input("DURATION"), scope);
+                    String ampS = cur.field("AMPLIFIER");
+                    int amp = ampS == null ? 0 : Integer.parseInt(ampS);
+                    if (amp < 0 || amp > 255) throw new RuntimeException("player_addeffect: AMPLIFIER вне диапазона 0..255: " + amp);
+                    sink.imports.add("net.minecraft.world.effect.MobEffectInstance");
+                    sink.imports.add("net.minecraft.world.effect.MobEffects");
+                    out.add("if (_ent instanceof Player pe) pe.addEffect(new MobEffectInstance(MobEffects." + effect + ", (int)(" + dur + "), " + amp + "));");
+                }
+                case "player_sethealth" -> {
+                    String hp = expression(p, cur.input("HEALTH"), scope);
+                    out.add("if (_ent instanceof Player ph) ph.setHealth((float)(" + hp + "));");
+                }
+                case "mc_play_sound" -> {
+                    String snd = stringLiteral(p, cur.input("SOUND"), scope);
+                    String cat = cur.field("CATEGORY"); if (cat == null) cat = "MASTER";
+                    String x = expression(p, cur.input("X"), scope);
+                    String y = expression(p, cur.input("Y"), scope);
+                    String z = expression(p, cur.input("Z"), scope);
+                    String vol = expression(p, cur.input("VOLUME"), scope);
+                    String pitch = expression(p, cur.input("PITCH"), scope);
+                    sink.imports.add("net.minecraft.sounds.SoundEvent");
+                    sink.imports.add("net.minecraft.sounds.SoundSource");
+                    out.add("{ SoundEvent __snd = SoundEvent.createByName(\"" + snd + "\"); _world.playSound(null, " + x + ", " + y + ", " + z + ", __snd, SoundSource." + cat + ", (float)(" + vol + "), (float)(" + pitch + ")); }");
                 }
                 case "return_logic" -> out.add("return " + expression(p, cur.input("RETURN"), scope) + ";");
                 case "return_number" -> out.add("return " + expression(p, cur.input("RETURN"), scope) + ";");
