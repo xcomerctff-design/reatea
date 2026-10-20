@@ -71,6 +71,12 @@ public class ElementVisitor {
                 String n = expression(p, el.input("SLOT"), scope);
                 yield "(_ent instanceof Player __pl ? __pl.getInventory().getItem(Math.min(35, (int)(" + n + "))).copy() : new ItemStack())";
             }
+            case "itemstack_make" -> {
+                // Конструктор стака: предмет по ID + количество (MCreator: "Item stack from item").
+                String id = expression(p, el.input("ITEM"), scope);
+                String cnt = expression(p, el.input("COUNT"), scope);
+                yield "(new ItemStack(Items.byName(\"" + stripQuotes(id) + "\"), (int)(" + cnt + ")))";
+            }
             default -> throw new RuntimeException("Unknown expression element: " + el.type);
         };
     }
@@ -90,6 +96,7 @@ public class ElementVisitor {
             case "logic_boolean", "logic_compare", "logic_operation", "not" -> McType.LOGIC;
             case "variables_get" -> scope.typeOf(el.field("VAR"));
             case "mc_getitemfromslot" -> McType.ITEMSTACK;
+            case "itemstack_make" -> McType.ITEMSTACK;
             default -> null; // неизвестно — не блокируем, javac-уровень добьёт при необходимости
         };
     }
@@ -105,6 +112,12 @@ public class ElementVisitor {
     }
     private static String quote(String s) {
         return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+    }
+    /** Снимает кавычки с уже экранированной строки-литерала (для встраивания в другой литерал). */
+    private static String stripQuotes(String quotedLiteral) {
+        if (quotedLiteral.length() >= 2 && quotedLiteral.startsWith("\"") && quotedLiteral.endsWith("\""))
+            return quotedLiteral.substring(1, quotedLiteral.length() - 1);
+        throw new RuntimeException("itemstack_make: ITEM должен быть строковым литералом (id предмета), получено: " + quotedLiteral);
     }
 
     /** Обход flow-цепочки: собрать statements для тела execute-execute. */

@@ -23,14 +23,18 @@
     {
       "id": "s2", "type": "procedures_setvar", "x": 80, "y": 230,
       "fields": [{ "name": "VAR", "value": "gem" }],
-      "inputs": [{ "name": "VALUE", "connectedElementId": "gi" }],
+      "inputs": [{ "name": "VALUE", "connectedElementId": "im" }],
       "outputNext": "g1"
     },
     {
-      "id": "gi", "type": "mc_getitemfromslot",
-      "inputs": [{ "name": "SLOT", "shadowType": "math_number", "connectedElementId": "n0" }]
+      "id": "im", "type": "itemstack_make",
+      "inputs": [
+        { "name": "ITEM", "shadowType": "text", "connectedElementId": "tid" },
+        { "name": "COUNT", "shadowType": "math_number", "connectedElementId": "vgc" }
+      ]
     },
-    { "id": "n0", "type": "math_number", "fields": [{ "name": "NUM", "value": "0" }] },
+    { "id": "tid", "type": "text", "fields": [{ "name": "TEXT", "value": "minecraft:diamond" }] },
+    { "id": "vgc", "type": "variables_get", "fields": [{ "name": "VAR", "value": "cnt" }] },
     {
       "id": "g1", "type": "mc_give_item_to_player", "x": 80, "y": 300,
       "inputs": [{ "name": "ITEMSTACK", "connectedElementId": "vg" }]

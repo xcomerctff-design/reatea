@@ -59,6 +59,10 @@ public class GameSimulator {
         final List<MockItemStack> inventory = new ArrayList<>();
         double health = 20.0;
         void add(MockItemStack s) { if (!s.isEmpty()) inventory.add(s); }
+        /** Семантика PlayerInventory.getItem(slot): пустой стак, если слот не заполнен. */
+        MockItemStack getItem(int slot) {
+            return (slot >= 0 && slot < inventory.size()) ? inventory.get(slot) : MockItemStack.EMPTY;
+        }
     }
 
     /** Контекст исполнения: типизация из Scope + значения переменных + мок-мир + трассировка. */
@@ -269,7 +273,16 @@ public class GameSimulator {
             case "entity_getpos", "coord_x" -> 0.0;
             case "entity_gety" -> 64.0;
             case "entity_getz" -> 0.0;
-            case "mc_getitemfromslot" -> List.of(MockItemStack.EMPTY); // заглушка инвентарной выборки
+            case "mc_getitemfromslot" -> {
+                // Копия семантики generated-кода: __pl.getInventory().getItem(min(35, slot)).copy()
+                int slot = (int) num(expr(p, el.input("SLOT"), ctx), el);
+                yield ctx.player.getItem(Math.min(35, Math.max(0, slot)));
+            }
+            case "itemstack_make" -> {
+                Object idv = expr(p, el.input("ITEM"), ctx);
+                int cnt = (int) num(expr(p, el.input("COUNT"), ctx), el);
+                yield new MockItemStack(String.valueOf(idv), cnt);
+            }
             default -> throw new SimException(el.id, "SIM_UNSUPPORTED_EXPR", "Симулятор не поддерживает выражение: " + el.type);
         };
     }

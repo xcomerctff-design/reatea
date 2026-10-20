@@ -26,6 +26,7 @@ public class ProcedureGenerator {
             "net.minecraft.world.entity.Entity",
             "net.minecraft.world.level.Level",
             "net.minecraft.world.item.ItemStack",
+            "net.minecraft.world.item.Items",
             "net.minecraft.core.BlockPos",
             "net.minecraft.world.entity.player.Player"
         ));
