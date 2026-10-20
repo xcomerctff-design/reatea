@@ -67,8 +67,9 @@ public class ElementVisitor {
             }
             case "not" -> "(!" + expression(p, el.input("BOOL"), scope) + ")";
             case "mc_getitemfromslot" -> {
-                String inv = expression(p, el.input("SLOT"), scope);
-                yield "(new ItemStack(" + inv + "))";
+                // Предмет из слота инвентаря вызывающего игрока (0..8 hotbar).
+                String n = expression(p, el.input("SLOT"), scope);
+                yield "(_ent instanceof Player __pl ? __pl.getInventory().getItem(Math.min(35, (int)(" + n + "))).copy() : new ItemStack())";
             }
             default -> throw new RuntimeException("Unknown expression element: " + el.type);
         };
@@ -164,6 +165,7 @@ public class ElementVisitor {
                     if (varName == null) throw new RuntimeException("forEach without VAR field");
                     scope.declare(varName, McType.ITEMSTACK); // цикл вводит переменную как ItemStack
                     String tmp = scope.newTemp("list");
+                    sink.imports.add("java.util.List");
                     out.add("List<ItemStack> " + tmp + " = " + listExpr + ";");
                     out.add("for (ItemStack " + varName + " : " + tmp + ") {");
                     for (ProcedureElement bodyEl : branchChain(p, cur, 0)) {

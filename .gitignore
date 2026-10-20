@@ -1,6 +1,3 @@
-*.class
+*.jar
 target/
-.gradle/
-*.log
-*.tmp
-.env
+build/
