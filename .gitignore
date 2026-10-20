@@ -1,2 +1,4 @@
+target/
 *.class
-out/
+*.jar
+.DS_Store

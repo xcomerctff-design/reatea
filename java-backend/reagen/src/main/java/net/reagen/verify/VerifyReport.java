@@ -18,7 +18,17 @@ public class VerifyReport {
     }
 
     public final List<Issue> issues = new ArrayList<>();
+    private String generatedJava;
+    private GameSimulator.SimResult simTrace;
     public boolean valid() { return issues.stream().noneMatch(i -> i.severity == Severity.ERROR); }
+
+    /** Сгенерированный Java-код (для панели «Код» редактора), если генерация удалась. */
+    public String generatedJava() { return generatedJava; }
+    public void setGeneratedJava(String code) { this.generatedJava = code; }
+
+    /** Трассировка headless-симуляции (для панели предпросмотра игрового теста). */
+    public GameSimulator.SimResult simTrace() { return simTrace; }
+    public void setSimTrace(GameSimulator.SimResult t) { this.simTrace = t; }
 
     public void error(String elementId, String rule, String msg) {
         issues.add(new Issue(elementId, Severity.ERROR, rule, msg));

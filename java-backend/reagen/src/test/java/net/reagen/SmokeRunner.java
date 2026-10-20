@@ -24,6 +24,9 @@ public class SmokeRunner {
         testSimUnknownEntity();
         testSimEmptyMessage();
         testSimHappyPathTrace();
+        testPlayerEffectBlock();
+        testSimBadEffect();
+        testBlockRegistryCoverage();
         System.out.println("SMOKE RESULT: " + pass + " PASS, " + fail + " FAIL");
         if (fail > 0) System.exit(1);
     }
@@ -247,5 +250,84 @@ public class SmokeRunner {
         check(res.givenItems.stream().anyMatch(s -> s.startsWith("minecraft:air")) == false && !res.givenItems.isEmpty(),
               "sim trace records non-empty item given: " + res.givenItems);
         check(Double.valueOf(64.0).equals(res.finalVariables.get("cnt")), "sim final variable cnt == 64: " + res.finalVariables);
+    }
+
+    /** Позитивный прогон: hero_buff (sethealth + addeffect + play_sound) проходит все 4 уровня. */
+    static void testPlayerEffectBlock() {
+        String json = new java.io.File("procedures/hero_buff.json").exists() ? safeRead("procedures/hero_buff.json") : null;
+        if (json == null) { // резервная копия графа прямо в тесте, если файл переместят
+            json = """
+            {"name":"heroBuff","returnType":"logic","rootId":"h1",
+             "elements":[
+               {"id":"h1","type":"player_sethealth",
+                "inputs":[{"name":"HEALTH","shadowType":"math_number","connectedElementId":"n1"}],
+                "outputNext":"a1"},
+               {"id":"n1","type":"math_number","fields":[{"name":"NUM","value":"20"}]},
+               {"id":"a1","type":"player_addeffect",
+                "inputs":[{"name":"EFFECT","shadowType":"text","connectedElementId":"teff"},
+                          {"name":"DURATION","shadowType":"math_number","connectedElementId":"n2"},
+                          {"name":"AMPLIFIER","shadowType":"math_number","connectedElementId":"n3"}],
+                "outputNext":"s1"},
+               {"id":"teff","type":"text","fields":[{"name":"TEXT","value":"SPEED"}]},
+               {"id":"n2","type":"math_number","fields":[{"name":"NUM","value":"200"}]},
+               {"id":"n3","type":"math_number","fields":[{"name":"NUM","value":"1"}]},
+               {"id":"s1","type":"mc_play_sound",
+                "fields":[{"name":"CATEGORY","value":"PLAYERS"}],
+                "inputs":[{"name":"SOUND","shadowType":"text","connectedElementId":"tsnd"},
+                          {"name":"X","shadowType":"math_number","connectedElementId":"nz0"},
+                          {"name":"Y","shadowType":"math_number","connectedElementId":"nz0"},
+                          {"name":"Z","shadowType":"math_number","connectedElementId":"nz0"},
+                          {"name":"VOLUME","shadowType":"math_number","connectedElementId":"n4"},
+                          {"name":"PITCH","shadowType":"math_number","connectedElementId":"n4"}]},
+               {"id":"tsnd","type":"text","fields":[{"name":"TEXT","value":"minecraft:entity.player.levelup"}]},
+               {"id":"nz0","type":"math_number","fields":[{"name":"NUM","value":"0"}]},
+               {"id":"n4","type":"math_number","fields":[{"name":"NUM","value":"1"}]}
+             ]}""";
+        }
+        var p = new ProcedureGraphParser().parse(json);
+        VerifyReport r = new ProcedureVerifier().verify(p);
+        check(r.valid(), "hero_buff verifies through all 4 levels: " + r.toJson());
+        check(r.generatedJava() != null && r.generatedJava().contains("addEffect(new MobEffectInstance(MobEffects.SPEED"),
+              "generated code uses Forge addEffect API");
+        check(r.generatedJava().contains("playSound("), "generated code uses Level.playSound");
+    }
+
+    /** Симуляция ловит недопустимый усилитель эффекта (>255) до запуска игры. */
+    static void testSimBadEffect() {
+        String json = """
+        {"name":"badEffect","returnType":"logic","rootId":"a1",
+         "elements":[
+           {"id":"a1","type":"player_addeffect",
+            "inputs":[{"name":"EFFECT","shadowType":"text","connectedElementId":"teff"},
+                      {"name":"DURATION","shadowType":"math_number","connectedElementId":"n2"},
+                      {"name":"AMPLIFIER","shadowType":"math_number","connectedElementId":"n3"}]},
+           {"id":"teff","type":"text","fields":[{"name":"TEXT","value":"GLOWING"}]},
+           {"id":"n2","type":"math_number","fields":[{"name":"NUM","value":"100"}]},
+           {"id":"n3","type":"math_number","fields":[{"name":"NUM","value":"999"}]}
+         ]}""";
+        var p = new ProcedureGraphParser().parse(json);
+        VerifyReport r = new ProcedureVerifier().verify(p);
+        check((!r.valid() && r.toJson().contains("SIM_BAD_AMPLIFIER"))
+              || r.toJson().contains("AMPLIFIER вне диапазона"),
+              "amplifier > 255 caught before game launch (sim or codegen): " + r.toJson());
+    }
+
+    /** Реестр блоков покрывает все типы, обрабатываемые генератором/симулятором. */
+    static void testBlockRegistryCoverage() {
+        String reg = net.reagen.blocks.BlockDef.toJson();
+        check(reg.startsWith("[") && reg.contains("\"player_addeffect\"") && reg.contains("\"mc_play_sound\""),
+              "block registry JSON exposes player/effect blocks");
+        int n = net.reagen.blocks.BlockDef.all().size();
+        check(n >= 25, "registry has >=25 blocks, got " + n);
+        for (String t : new String[]{"controls_if","controls_forEach","procedures_setvar","variables_get",
+                                     "math_number","text","math_arithmetic","mc_sendmessage",
+                                     "mc_give_item_to_player","itemstack_make","player_addeffect"}) {
+            check(net.reagen.blocks.BlockDef.byType(t) != null, "registry covers block type: " + t);
+        }
+    }
+
+    static String safeRead(String path) {
+        try { return java.nio.file.Files.readString(java.nio.file.Path.of(path)); }
+        catch (Exception e) { return null; }
     }
 }

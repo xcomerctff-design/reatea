@@ -83,6 +83,8 @@ public final class BlockDef {
         reg(define("entity_gety", Kind.EXPRESSION, "game").output("number").field("ENTITY").build());
         reg(define("entity_getz", Kind.EXPRESSION, "game").output("number").field("ENTITY").build());
         reg(define("itemstack_count", Kind.EXPRESSION, "game").output("number").field("ITEMSTACK").build());
+        reg(define("player_gethealth", Kind.EXPRESSION, "game").output("number").playerRequired().build());
+        reg(define("player_issurvival", Kind.EXPRESSION, "game").output("logic").playerRequired().build());
         reg(define("mc_getitemfromslot", Kind.EXPRESSION, "game").output("itemstack").playerRequired()
                 .input("SLOT", "number", "math_number").build());
         reg(define("itemstack_make", Kind.EXPRESSION, "game").output("itemstack")
@@ -106,6 +108,17 @@ public final class BlockDef {
                 .input("X", "number", "math_number").input("Y", "number", "math_number").input("Z", "number", "math_number").build());
         reg(define("mc_give_item_to_player", Kind.STATEMENT, "game").playerRequired()
                 .input("ITEMSTACK", "itemstack", null).build());
+        reg(define("player_addeffect", Kind.STATEMENT, "game").playerRequired()
+                .input("EFFECT", "string", "text")
+                .input("DURATION", "number", "math_number")
+                .input("AMPLIFIER", "number", "math_number").build());
+        reg(define("player_sethealth", Kind.STATEMENT, "game").playerRequired()
+                .input("HEALTH", "number", "math_number").build());
+        reg(define("mc_play_sound", Kind.STATEMENT, "game")
+                .field("CATEGORY")
+                .input("SOUND", "string", "text")
+                .input("X", "number", "math_number").input("Y", "number", "math_number").input("Z", "number", "math_number")
+                .input("VOLUME", "number", "math_number").input("PITCH", "number", "math_number").build());
     }
 
     /** JSON описания всех блоков — для палитры редактора (GET /blocks). */
