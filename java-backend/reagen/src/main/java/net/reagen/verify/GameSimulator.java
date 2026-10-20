@@ -42,6 +42,10 @@ public class GameSimulator {
         "minecraft:zombie", "minecraft:skeleton", "minecraft:creeper", "minecraft:player",
         "minecraft:item", "minecraft:armor_stand", "minecraft:bat", "minecraft:wolf");
 
+    /** Ванильные эффекты (MobEffects.*) — то, что умеет генерировать player_addeffect. */
+    static final Set<String> KNOWN_EFFECTS = Set.of(
+        "REGENERATION", "SPEED", "POISON", "WEAKNESS", "STRENGTH");
+
     record MockPos(double x, double y, double z) {}
 
     static class MockLevel {
@@ -58,6 +62,9 @@ public class GameSimulator {
     static class MockPlayer {
         final List<MockItemStack> inventory = new ArrayList<>();
         double health = 20.0;
+        double maxHealth = 20.0;
+        boolean survival = true;
+        final Map<String, Integer> effects = new LinkedHashMap<>(); // эффект -> длительность тиков
         void add(MockItemStack s) { if (!s.isEmpty()) inventory.add(s); }
         /** Семантика PlayerInventory.getItem(slot): пустой стак, если слот не заполнен. */
         MockItemStack getItem(int slot) {
@@ -192,6 +199,41 @@ public class GameSimulator {
                 if (st.isEmpty()) ctx.trace.givenItems.add("EMPTY");
                 else { ctx.player.add(st); ctx.trace.givenItems.add(st.itemId + "x" + st.count); }
             }
+            case "player_addeffect" -> {
+                Object ev = expr(p, el.input("EFFECT"), ctx);
+                String effect = String.valueOf(ev);
+                if (!KNOWN_EFFECTS.contains(effect))
+                    throw new SimException(el.id, "SIM_UNKNOWN_EFFECT",
+                        "Unknown effect '" + effect + "' — MobEffects." + effect + " not in 1.20.1 registry");
+                double dur = num(expr(p, el.input("DURATION"), ctx), el);
+                if (dur < 0) throw new SimException(el.id, "SIM_NEGATIVE_DURATION",
+                    "Negative effect duration (" + dur + " ticks)");
+                String ampS = el.field("AMPLIFIER");
+                int amp = ampS == null ? 0 : (int) parseNum(ampS, el);
+                if (amp < 0 || amp > 255)
+                    throw new SimException(el.id, "SIM_BAD_AMPLIFIER", "Effect amplifier out of 0..255: " + amp);
+                ctx.player.effects.put(effect, (int) dur);
+            }
+            case "player_sethealth" -> {
+                double hp = num(expr(p, el.input("HEALTH"), ctx), el);
+                if (Double.isNaN(hp))
+                    throw new SimException(el.id, "SIM_NAN_HEALTH", "NaN health is undefined behavior in game");
+                if (hp < 0)
+                    throw new SimException(el.id, "SIM_NEGATIVE_HEALTH", "sethealth(<0): game clamps to 0 — dead player, check logic");
+                if (hp > ctx.player.maxHealth)
+                    ctx.trace.chatLog.add("WARN:health_above_max:" + hp + ">" + ctx.player.maxHealth);
+                ctx.player.health = Math.min(hp, ctx.player.maxHealth);
+            }
+            case "mc_play_sound" -> {
+                String snd = String.valueOf(expr(p, el.input("SOUND"), ctx));
+                if (snd.isBlank()) throw new SimException(el.id, "SIM_EMPTY_SOUND", "playSound with empty sound id");
+                double vol = num(expr(p, el.input("VOLUME"), ctx), el);
+                double pitch = num(expr(p, el.input("PITCH"), ctx), el);
+                if (vol < 0 || vol > 1)
+                    ctx.trace.chatLog.add("WARN:sound_volume_out_of_range:" + vol);
+                if (pitch < 0.5 || pitch > 2.0)
+                    ctx.trace.chatLog.add("WARN:sound_pitch_out_of_range:" + pitch);
+            }
             case "return_logic", "return_number", "return_string" -> {
                 ctx.trace.returnValue = expr(p, el.input("RETURN"), ctx);
             }
@@ -273,6 +315,8 @@ public class GameSimulator {
             case "entity_getpos", "coord_x" -> 0.0;
             case "entity_gety" -> 64.0;
             case "entity_getz" -> 0.0;
+            case "player_gethealth" -> ctx.player.health;
+            case "player_issurvival" -> ctx.player.survival;
             case "mc_getitemfromslot" -> {
                 // Копия семантики generated-кода: __pl.getInventory().getItem(min(35, slot)).copy()
                 int slot = (int) num(expr(p, el.input("SLOT"), ctx), el);

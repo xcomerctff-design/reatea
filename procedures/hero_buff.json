@@ -1,0 +1,54 @@
+{
+  "name": "heroBuff",
+  "modId": "reagen",
+  "returnType": "logic",
+  "rootId": "b1",
+  "locals": [ { "name": "hp", "type": "number" } ],
+  "elements": [
+    {
+      "id": "b1", "type": "player_sethealth", "x": 80, "y": 60,
+      "inputs": [ { "name": "HEALTH", "shadowType": "math_number", "connectedElementId": "n20" } ],
+      "outputNext": "b2"
+    },
+    { "id": "n20", "type": "math_number", "fields": [ { "name": "NUM", "value": "20" } ] },
+    {
+      "id": "b2", "type": "player_addeffect", "x": 80, "y": 140,
+      "fields": [ { "name": "AMPLIFIER", "value": "1" } ],
+      "inputs": [
+        { "name": "EFFECT", "shadowType": "text", "connectedElementId": "teff" },
+        { "name": "DURATION", "shadowType": "math_number", "connectedElementId": "ndur" }
+      ],
+      "outputNext": "b3"
+    },
+    { "id": "teff", "type": "text", "fields": [ { "name": "TEXT", "value": "SPEED" } ] },
+    { "id": "ndur", "type": "math_number", "fields": [ { "name": "NUM", "value": "200" } ] },
+    {
+      "id": "b3", "type": "mc_play_sound", "x": 80, "y": 230,
+      "fields": [ { "name": "CATEGORY", "value": "PLAYERS" } ],
+      "inputs": [
+        { "name": "SOUND", "shadowType": "text", "connectedElementId": "tsnd" },
+        { "name": "X", "shadowType": "math_number", "connectedElementId": "nz0" },
+        { "name": "Y", "shadowType": "math_number", "connectedElementId": "nz0" },
+        { "name": "Z", "shadowType": "math_number", "connectedElementId": "nz0" },
+        { "name": "VOLUME", "shadowType": "math_number", "connectedElementId": "nv1" },
+        { "name": "PITCH", "shadowType": "math_number", "connectedElementId": "np1" }
+      ],
+      "outputNext": "b4"
+    },
+    { "id": "tsnd", "type": "text", "fields": [ { "name": "TEXT", "value": "minecraft:entity.player.levelup" } ] },
+    { "id": "nz0", "type": "math_number", "fields": [ { "name": "NUM", "value": "0" } ] },
+    { "id": "nv1", "type": "math_number", "fields": [ { "name": "NUM", "value": "1" } ] },
+    { "id": "np1", "type": "math_number", "fields": [ { "name": "NUM", "value": "1" } ] },
+    {
+      "id": "b4", "type": "mc_sendmessage", "x": 80, "y": 330,
+      "inputs": [ { "name": "MESSAGE", "shadowType": "text", "connectedElementId": "tmsg" } ],
+      "outputNext": "r1"
+    },
+    { "id": "tmsg", "type": "text", "fields": [ { "name": "TEXT", "value": "Hero powered up!" } ] },
+    {
+      "id": "r1", "type": "return_logic", "x": 80, "y": 410,
+      "inputs": [ { "name": "RETURN", "shadowType": "logic_boolean", "connectedElementId": "bt" } ]
+    },
+    { "id": "bt", "type": "logic_boolean", "fields": [ { "name": "BOOL", "value": "true" } ] }
+  ]
+}
