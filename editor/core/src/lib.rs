@@ -26,7 +26,8 @@ pub enum VerifyError {
 pub struct Param { pub name: String, pub r#type: String }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-#[serde(tag = "kind", rename_all = "lowercase")]
+// camelCase — контракт с UI (api.ts); Java-парсер принимает оба регистра.
+#[serde(tag = "kind", rename_all = "lowercase", rename_all_fields = "camelCase")]
 pub enum Step {
     Sql    { id: String, #[serde(default)] line: u32, sql: String },
     Guard  { id: String, #[serde(default)] line: u32, exists_query: String, message: String },
@@ -147,8 +148,10 @@ mod tests {
         };
         let json = serde_json::to_string(&spec).unwrap();
         assert!(json.contains("\"kind\":\"guard\""));
-        assert!(json.contains("\"exists_query\""));
+        // контракт с UI и Java-парсером: camelCase
+        assert!(json.contains("\"existsQuery\""), "expected camelCase existsQuery in {json}");
         assert!(json.contains("\"dialect\":\"postgresql\""));
+        assert!(json.contains("\"message\""));
     }
 
     #[test]

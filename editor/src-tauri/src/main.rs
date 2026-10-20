@@ -77,6 +77,7 @@ mod tests {
         };
         let json = serde_json::to_string(&spec).unwrap();
         assert!(json.contains("\"kind\":\"guard\""));
-        assert!(json.contains("\"exists_query\""));
+        // контракт с UI и Java-парсером: camelCase
+        assert!(json.contains("\"existsQuery\""), "expected camelCase existsQuery in {json}");
     }
 }

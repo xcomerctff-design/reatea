@@ -47,8 +47,9 @@ public final class ProcedureJsonParser {
             String kind = s.strOr("kind", "sql");
             Procedure.Step step;
             switch (kind) {
-                case "guard":  { var g = new Procedure.GuardStep();  g.existsQuery = s.str("existsQuery"); g.message = s.strOr("message","guard failed"); step = g; } break;
-                case "return": { var r = new Procedure.ReturnStep(); r.selectSql = s.str("selectSql"); step = r; } break;
+                // Ключи читаем в двух регистрах: camelCase (UI/TypeScript) и snake_case (serde по умолчанию в Rust).
+                case "guard":  { var g = new Procedure.GuardStep();  g.existsQuery = s.strOr2("existsQuery", "exists_query", ""); g.message = s.strOr("message","guard failed"); step = g; } break;
+                case "return": { var r = new Procedure.ReturnStep(); r.selectSql = s.strOr2("selectSql", "select_sql", ""); step = r; } break;
                 case "assign": { var a = new Procedure.AssignStep(); a.variable = s.str("variable"); a.expression = s.str("expression"); step = a; } break;
                 default:       { var q = new Procedure.SqlStep();    q.sql = s.strOr("sql",""); step = q; } break;
             }
@@ -167,6 +168,12 @@ public final class ProcedureJsonParser {
         final java.util.Map<String, Object> map = new java.util.LinkedHashMap<>();
         public String str(String k)      { Object v = map.get(k); return v == null ? null : v.toString(); }
         public String strOr(String k,String d){ Object v = map.get(k); return v == null ? d : v.toString(); }
+        /** Значение по первому непустому ключу — поддержка camelCase и snake_case одновременно. */
+        public String strOr2(String k1, String k2, String d) {
+            Object v = map.get(k1);
+            if (v == null) v = map.get(k2);
+            return v == null ? d : v.toString();
+        }
         public long   numOr(String k,long d)  { Object v = map.get(k); return v == null ? d : (long)(Long)v; }
         @SuppressWarnings("unchecked")
         public java.util.List<Object> arrOr(String k, java.util.List<Object> d) {
