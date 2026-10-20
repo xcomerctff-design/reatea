@@ -1,10 +1,9 @@
 [package]
-name = "sqlgen-core"
+name = "reagen-core"
 version = "0.1.0"
 edition = "2021"
-description = "SQLGen Studio: Rust-модели процедур, мост к Java-верификатору, unit-тесты (без Tauri)"
+description = "ReaT editor core: procedure graph models + bridge to the Java verification backend"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-thiserror = "1"

@@ -1,27 +1,13 @@
-# SQLGen Studio
+# ReaT — визуальный редактор процедур в стиле MCreator + кодогенерация Minecraft-модов (Forge 1.20.1)
 
-Редактор визуальной сборки SQL-процедур с генерацией кода (PostgreSQL/MySQL)
-и **проверкой процедур прямо из редактора** через Java-подложку.
-
-## Быстрый старт
-```bash
-./scripts/build.sh        # компиляция Java + jar + smoke-тесты + cargo test Rust core
-# Ручная проверка верификатора (протокол, который использует Rust-мост):
-java -cp java-backend/sqlgen/out org.sqlgen.verify.VerifyMain --schema db/migrations/002_sample_business_tables.sql < spec.json
-```
+Проект переосмыслен: **процедуры — это не SQL**, а визуальные алгоритмы (как Procedures в MCreator).
+Редактор строит граф блоков, а Java-подложка генерирует из него код мода для **Minecraft Forge 1.20.1**.
 
 ## Структура
-- `docs/` — ARCHITECTURE.md и ADR-001 (анализ подходов проверки процедур, выбор решения)
-- `db/migrations/`, `db/procedures/` — схема реестра процедур и примеры SQL
-- `java-backend/sqlgen/` — AST, JSON-парсер, генераторы кода, верификатор, CLI VerifyMain
-- `editor/core/` — Rust crate: модели ProcedureSpec/Report + JavaVerifier (daemon-мост), тесты
-- `editor/src-tauri/` — Tauri-команды verify_procedure / generate_code
-- `editor/src/` — TS-заготовки UI (api.ts, VerifyPanel.ts)
-- `scripts/build.sh` — сборка и прогон всех тестов
+- `procedures/` — примеры процедур в JSON-формате (граф элементов)
+- `java-backend/reagen/` — Java: модель процедуры, парсер, генераторы кода Forge, верификатор
+- `editor/core/` — Rust-ядро (sqlgen-core переименован в reagen-core): модели + мост к JVM-верификатору
+- `docs/` — архитектура и ADR
 
-## Как работает проверка из редактора
-Кнопка «Проверить» → Tauri invoke `verify_procedure(spec)` → resident JVM-процесс
-(`VerifyMain --daemon`, stdin/stdout JSON, EOT-фрейминг) → статические правила +
-сверка с DDL-моделью схемы → отчёт `{valid, errors[stepIndex,line,rule,message], generatedSql}`
-→ подсветка ошибок на узлах графа. Опционально — dry-run EXPLAIN на тестовой БД
-(интерфейс `Verifier.DsnChecker`). Обоснование выбора — в docs/ADR-procedure-verification.md.
+## Конвейер
+UI-граф (JSON) → Parler/Rust-мост → Java-парсер → ElementVisitor → композитные Fragments → генерация .java/.json файлов мода → проверка (компилируемость + семантика)

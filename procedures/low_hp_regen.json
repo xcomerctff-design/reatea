@@ -1,0 +1,34 @@
+{
+  "name": "lowHpRegen",
+  "returnType": "logic",
+  "rootId": "i1",
+  "args": [{ "name": "hp", "type": "number" }],
+  "elements": [
+    {
+      "id": "i1", "type": "controls_if", "x": 60, "y": 40,
+      "inputs": [{ "name": "CONDITION", "connectedElementId": "c1" }],
+      "branches": [["i2"]],
+      "outputNext": "r1"
+    },
+    {
+      "id": "c1", "type": "logic_compare",
+      "fields": [{ "name": "OP", "value": "LT" }],
+      "inputs": [
+        { "name": "A", "connectedElementId": "g1" },
+        { "name": "B", "shadowType": "math_number", "connectedElementId": "n5" }
+      ]
+    },
+    { "id": "g1", "type": "variables_get", "fields": [{ "name": "VAR", "value": "hp" }] },
+    { "id": "n5", "type": "math_number", "fields": [{ "name": "NUM", "value": "5" }] },
+    {
+      "id": "i2", "type": "return_logic",
+      "inputs": [{ "name": "RETURN", "connectedElementId": "f1" }]
+    },
+    { "id": "f1", "type": "logic_boolean", "fields": [{ "name": "BOOL", "value": "false" }] },
+    {
+      "id": "r1", "type": "return_logic",
+      "inputs": [{ "name": "RETURN", "connectedElementId": "t1" }]
+    },
+    { "id": "t1", "type": "logic_boolean", "fields": [{ "name": "BOOL", "value": "true" }] }
+  ]
+}
