@@ -114,7 +114,7 @@ public class SmokeRunner {
          ]}""";
         var p = new ProcedureGraphParser().parse(json);
         String code = new ProcedureGenerator().generate(p);
-        check(code.contains("for (ItemStack stack : list0)"), "forEach loop generated");
+        check(code.contains("List<ItemStack> list0 =") && code.contains("for (ItemStack stack : list0)"), "forEach loop generated");
         check(code.contains("pl.getInventory().add(stack)"), "give item inside loop");
     }
 

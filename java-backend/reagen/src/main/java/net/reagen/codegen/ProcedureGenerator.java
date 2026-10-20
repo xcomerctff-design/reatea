@@ -21,6 +21,8 @@ public class ProcedureGenerator {
         sb.append("package net.reagen.procedures;\n\n");
         // Стандартные импорты MCreator-style процедур
         List<String> imports = new ArrayList<>(List.of(
+            "java.util.ArrayList",
+            "java.util.List",
             "net.minecraft.world.entity.Entity",
             "net.minecraft.world.level.Level",
             "net.minecraft.world.item.ItemStack",
