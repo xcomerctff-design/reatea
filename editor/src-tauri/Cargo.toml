@@ -1,0 +1,21 @@
+[package]
+name = "sqlgen-editor"
+version = "0.1.0"
+edition = "2021"
+description = "SQLGen Studio — редактор процедур + генератор кода (Tauri shell)"
+
+[lib]
+name = "sqlgen_editor_lib"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+sqlgen-core = { path = "../core" }   # модели + JavaBridge (тестируются отдельно от Tauri)
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+
+[target.'cfg(not(test))'.dependencies]
+tauri = { version = "1.5", features = [] }
+
+[build-dependencies]
+tauri-build = { version = "1.5" }
