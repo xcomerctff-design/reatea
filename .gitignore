@@ -1,5 +1,6 @@
-out/
-target/
 *.class
-*.jar
-test
+target/
+.gradle/
+*.log
+*.tmp
+.env

@@ -1,23 +1,24 @@
 #!/usr/bin/env bash
-# Сборка SQLGen Studio: Java-подложка -> jar, Rust core -> тесты.
+# Сборка и проверка ReaT: Java-подложка (только валидация) + Rust-ядро редактора.
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$(dirname "$0")/.."
 
-echo '==> Компиляция Java-подложки'
-cd "$ROOT/java-backend/sqlgen"
-mkdir -p out
-javac -d out $(find src/main/java -name '*.java')
-jar --create --file sqlgen.jar -C out .
-echo "    jar: java-backend/sqlgen/sqlgen.jar"
+echo "== [1/4] javac: компиляция java-backend/reagen =="
+mkdir -p java-backend/reagen/out
+javac -d java-backend/reagen/out $(find java-backend/reagen/stubs java-backend/reagen/src/main/java java-backend/reagen/src/test/java -name '*.java')
 
-echo '==> Smoke-тесты Java (парсер + верификатор + генератор)'
-javac -d out -cp out src/test/java/org/sqlgen/SmokeRunner.java
-java -cp out org.sqlgen.SmokeRunner
+echo "== [2/4] Smoke-тесты Java (генерация + 4 уровня проверки) =="
+java -cp java-backend/reagen/out -Dreagen.stubs=java-backend/reagen/stubs net.reagen.SmokeRunner
 
-echo '==> Тесты Rust core (модели и мост)'
-cd "$ROOT/editor/core"
-CARGO_BIN="${CARGO:-}"
-[ -z "$CARGO_BIN" ] && CARGO_BIN="$(command -v cargo || echo "$HOME/.cargo/bin/cargo")"
-"$CARGO_BIN" test --quiet
+echo "== [3/4] jar для Rust-моста =="
+(cd java-backend/reagen/out && jar cf ../../reagen.jar .)
+echo "built reagen.jar"
 
-echo '==> Готово. Запуск редактора: cd editor/src-tauri && cargo tauri dev'
+echo "== [4/4] cargo test: Rust-ядро редактора =="
+(cd editor/core && PATH="$HOME/.cargo/bin:$PATH" cargo test -q)
+
+echo "E2E: пример процедуры через VerifyCli:"
+java -cp java-backend/reagen/out -Dreagen.stubs=java-backend/reagen/stubs \
+  net.reagen.verify.VerifyCli < procedures/give_diamond.json
+echo
+echo "BUILD OK"

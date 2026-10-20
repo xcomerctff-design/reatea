@@ -1,132 +1,173 @@
-//! Мост Rust -> Java верификатор (подход C из docs/ADR-procedure-verification.md).
+//! reagen-core — ядро визуального редактора процедур (аналог MCreator procedures).
 //!
-//! Долгоживущий daemon-процесс `java -cp sqlgen.jar org.sqlgen.verify.VerifyMain --daemon`
-//! принимает JSON-спецификации в stdin и отдаёт отчёты в stdout, разделённые EOT (\u{4}).
-//! Переиспользование процесса устраняет JVM-старт на каждой проверке.
+//! Ответственности:
+//!  * модели графа процедуры (Elements/Inputs/Branches) с единым camelCase-контрактом
+//!    UI(TS) <-> Rust <-> Java (см. java-backend/reagen/parser/ProcedureGraphParser);
+//!  * мост к resident JVM-процессу верификатора (`net.reagen.verify.VerifyCli --daemon`):
+//!    запрос/ответ JSON, разделённые маркером `%%EOT%%`.
+//!
+//! Java-подложка делает ТОЛЬКО проверку присланного из редактора кода/графа —
+//! интерпретацией и хранением проектов занимается эта сторона.
 
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader, Write};
-use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
-use std::sync::Mutex;
-use thiserror::Error;
+use std::process::{Child, Command, Stdio};
 
-pub const EOT: u8 = 0x04;
+pub const EOT: &str = "%%EOT%%";
 
-#[derive(Debug, Error)]
-pub enum VerifyError {
-    #[error("не удалось запустить JVM-верификатор: {0}")]
-    Spawn(std::io::Error),
-    #[error("ошибка записи запроса: {0}")]
-    Io(#[from] std::io::Error),
-    #[error("верификатор молчит (обрыв канала)")]
-    BrokenPipe,
+/// Тип переменной процедуры (зеркало net.reagen.ast.McType).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum McType {
+    Number,
+    String,
+    Logic,
+    #[serde(rename = "itemstack")]
+    ItemStack,
+    Entity,
+    World,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Param { pub name: String, pub r#type: String }
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-// camelCase — контракт с UI (api.ts); Java-парсер принимает оба регистра.
-#[serde(tag = "kind", rename_all = "lowercase", rename_all_fields = "camelCase")]
-pub enum Step {
-    Sql    { id: String, #[serde(default)] line: u32, sql: String },
-    Guard  { id: String, #[serde(default)] line: u32, exists_query: String, message: String },
-    Return { id: String, #[serde(default)] line: u32, select_sql: String },
-    Assign { id: String, #[serde(default)] line: u32, variable: String, expression: String },
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ProcedureSpec {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Field {
     pub name: String,
-    #[serde(default)]
-    pub dialect: String,
-    #[serde(default)]
-    pub params: Vec<Param>,
-    #[serde(default)]
-    pub steps: Vec<Step>,
+    pub value: String,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Input {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shadow_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub connected_element_id: Option<String>,
+}
+
+/// Blockly-подобный блок графа. `branches` — списки id стартовых блоков веток (if/loop).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Element {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub el_type: String,
+    #[serde(default)]
+    pub x: i32,
+    #[serde(default)]
+    pub y: i32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_next: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fields: Vec<Field>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub inputs: Vec<Input>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub branches: Vec<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NamedVar {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub var_type: McType,
+}
+
+/// Полная процедура — то, что редактор отправляет на проверку в Java.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Procedure {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mod_id: Option<String>,
+    #[serde(rename = "returnType")]
+    pub return_type: McType,
+    pub root_id: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub args: Vec<NamedVar>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub locals: Vec<NamedVar>,
+    pub elements: Vec<Element>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Issue {
-    #[serde(rename = "stepIndex")] pub step_index: i32,
-    pub line: u32,
-    pub severity: String,
+    pub element_id: String,
+    pub severity: String, // ERROR | WARNING
     pub rule: String,
     pub message: String,
 }
 
-#[derive(Deserialize, Debug)]
-pub struct Report {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VerifyReport {
     pub valid: bool,
-    pub errors: Vec<Issue>,
-    #[serde(rename = "generatedSql", default)]
-    pub generated_sql: Option<String>,
+    #[serde(default)]
+    pub issues: Vec<Issue>,
 }
 
-/// Обёртка над resident JVM-процессом.
+impl VerifyReport {
+    /// Ошибки по id блока — для подсветки узлов графа в UI.
+    pub fn errors_by_element(&self) -> std::collections::HashMap<String, Vec<&Issue>> {
+        let mut map: std::collections::HashMap<String, Vec<&Issue>> = Default::default();
+        for i in &self.issues {
+            map.entry(i.element_id.clone()).or_default().push(i);
+        }
+        map
+    }
+}
+
+/// Resident-мост к JVM-верификатору. Один процесс Java переиспользуется между
+/// проверками (старт JVM ~300 мс — единичная цена, дальше <10 мс на прогон).
 pub struct JavaVerifier {
-    child: Mutex<Child>,
-    stdin: Mutex<ChildStdin>,
-    stdout: Mutex<BufReader<ChildStdout>>,
+    child: Child,
+    stdin: std::process::ChildStdin,
+    stdout: BufReader<std::process::ChildStdout>,
 }
 
 impl JavaVerifier {
-    /// classpath — путь к собранной подложке (out/ или sqlgen.jar), schema_ddl — опционально.
-    pub fn spawn(classpath: &str, schema_ddl: Option<&str>) -> Result<Self, VerifyError> {
-        let mut cmd = Command::new("java");
-        cmd.arg("-cp").arg(classpath)
-           .arg("org.sqlgen.verify.VerifyMain")
-           .arg("--daemon");
-        if let Some(s) = schema_ddl {
-            cmd.arg("--schema").arg(s);
-        }
-        let mut child = cmd
+    /// jar_path — собранный reagen.jar (scripts/build.sh), class иначе.
+    pub fn spawn(jar_path: &str) -> std::io::Result<Self> {
+        let mut child = Command::new("java")
+            .args(["-cp", jar_path, "net.reagen.verify.VerifyCli", "--daemon"])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
-            .spawn()
-            .map_err(VerifyError::Spawn)?;
-        let stdin = child.stdin.take().ok_or(VerifyError::Spawn(std::io::Error::other("no stdin")))?;
-        let stdout = child.stdout.take().ok_or(VerifyError::Spawn(std::io::Error::other("no stdout")))?;
-        Ok(Self { child: Mutex::new(child), stdin: Mutex::new(stdin), stdout: Mutex::new(BufReader::new(stdout)) })
+            .spawn()?;
+        let stdin = child.stdin.take().expect("stdin");
+        let stdout = BufReader::new(child.stdout.take().expect("stdout"));
+        Ok(Self { child, stdin, stdout })
     }
 
-    /// Синхронная проверка одной спецификации. Вызывается из Tauri-команды в blocking-потоке.
-    pub fn verify(&self, spec: &ProcedureSpec) -> Result<Report, VerifyError> {
-        let req = serde_json::to_string(spec).unwrap_or_default();
-        {
-            let mut si = self.stdin.lock().unwrap();
-            si.write_all(req.as_bytes())?;
-            si.write_all(b"\n")?;
-            si.flush()?;
-        }
-        // читаем до EOT
-        let mut buf = Vec::new();
-        {
-            let mut so = self.stdout.lock().unwrap();
-            loop {
-                let b = so.fill_buf()?;
-                if b.is_empty() { return Err(VerifyError::BrokenPipe); }
-                if let Some(i) = b.iter().position(|&x| x == EOT) {
-                    buf.extend_from_slice(&b[..i]);
-                    so.consume(i + 1);
-                    break;
-                } else {
-                    buf.extend_from_slice(b);
-                    let n = b.len();
-                    so.consume(n);
-                }
+    /// Проверить процедуру: сериализовать граф -> Java (4 уровня: структура, типы,
+    /// javac против стабов Forge API, headless-симуляция «игрового теста») -> отчёт.
+    pub fn verify(&mut self, procedure: &Procedure) -> std::io::Result<VerifyReport> {
+        let req = serde_json::to_string(procedure).map_err(std::io::Error::other)?;
+        writeln!(self.stdin, "{req}")?;
+        writeln!(self.stdin, "{EOT}")?;
+        self.stdin.flush()?;
+        let mut resp = String::new();
+        self.stdout.read_line(&mut resp)?;
+        // читаем до маркера конца фрейма
+        while !resp.trim_end().ends_with('}') {
+            let mut line = String::new();
+            if self.stdout.read_line(&mut line)? == 0 {
+                return Err(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "JVM closed"));
             }
+            if line.trim() == EOT {
+                break;
+            }
+            resp.push_str(&line);
         }
-        let json = String::from_utf8_lossy(&buf).trim().to_string();
-        serde_json::from_str::<Report>(&json)
-            .map_err(|e| VerifyError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e)))
+        serde_json::from_str(&resp).map_err(|e| std::io::Error::other(format!("bad report: {e}: {resp}")))
     }
 }
 
 impl Drop for JavaVerifier {
     fn drop(&mut self) {
-        let _ = self.child.lock().unwrap().kill();
+        let _ = self.child.kill();
+        let _ = self.child.wait();
     }
 }
 
@@ -134,31 +175,77 @@ impl Drop for JavaVerifier {
 mod tests {
     use super::*;
 
-    #[test]
-    fn spec_serializes_to_java_format() {
-        let spec = ProcedureSpec {
-            name: "get_orders".into(),
-            dialect: "postgresql".into(),
-            params: vec![Param { name: "p_id".into(), r#type: "BIGINT".into() }],
-            steps: vec![Step::Guard {
-                id: "g1".into(), line: 2,
-                exists_query: "SELECT 1 FROM customers c WHERE c.id = p_id".into(),
-                message: "not found".into(),
-            }],
-        };
-        let json = serde_json::to_string(&spec).unwrap();
-        assert!(json.contains("\"kind\":\"guard\""));
-        // контракт с UI и Java-парсером: camelCase
-        assert!(json.contains("\"existsQuery\""), "expected camelCase existsQuery in {json}");
-        assert!(json.contains("\"dialect\":\"postgresql\""));
-        assert!(json.contains("\"message\""));
+    fn sample() -> Procedure {
+        Procedure {
+            name: "giveDiamond".into(),
+            mod_id: None,
+            return_type: McType::Logic,
+            root_id: "e1".into(),
+            args: vec![],
+            locals: vec![NamedVar { name: "cnt".into(), var_type: McType::Number }],
+            elements: vec![
+                Element {
+                    id: "e1".into(),
+                    el_type: "procedures_setvar".into(),
+                    x: 0, y: 0,
+                    output_next: Some("e2".into()),
+                    fields: vec![Field { name: "VAR".into(), value: "cnt".into() }],
+                    inputs: vec![Input {
+                        name: "VALUE".into(),
+                        shadow_type: Some("math_number".into()),
+                        connected_element_id: Some("n1".into()),
+                    }],
+                    branches: vec![],
+                },
+                Element {
+                    id: "n1".into(),
+                    el_type: "math_number".into(),
+                    x: 0, y: 0,
+                    output_next: None,
+                    fields: vec![Field { name: "NUM".into(), value: "64".into() }],
+                    inputs: vec![],
+                    branches: vec![],
+                },
+                Element {
+                    id: "e2".into(),
+                    el_type: "return_logic".into(),
+                    x: 0, y: 0,
+                    output_next: None,
+                    fields: vec![],
+                    inputs: vec![Input {
+                        name: "RETURN".into(),
+                        shadow_type: Some("logic_boolean".into()),
+                        connected_element_id: None,
+                    }],
+                    branches: vec![],
+                },
+            ],
+        }
     }
 
     #[test]
-    fn report_deserializes_from_java_output() {
-        let java_out = r#"{"valid":false,"errors":[{"stepIndex":0,"line":1,"severity":"ERROR","rule":"SCHEMA_TABLE","message":"Неизвестная таблица"}]}"#;
-        let r: Report = serde_json::from_str(java_out).unwrap();
-        assert!(!r.valid);
-        assert_eq!(r.errors[0].rule, "SCHEMA_TABLE");
+    fn contract_is_camel_case_and_java_readable() {
+        let json = serde_json::to_string(&sample()).unwrap();
+        // Ключи, которые ждёт ProcedureGraphParser (Java):
+        assert!(json.contains("\"rootId\":\"e1\""));
+        assert!(json.contains("\"returnType\":\"logic\""));
+        assert!(json.contains("\"connectedElementId\":\"n1\""));
+        assert!(json.contains("\"outputNext\":\"e2\""));
+        assert!(json.contains("\"shadowType\":\"math_number\""));
+        // round-trip через наши же модели
+        let back: Procedure = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.elements.len(), 3);
+    }
+
+    #[test]
+    fn report_deserializes_with_element_mapping() {
+        let raw = r#"{"valid":false,"issues":[
+            {"elementId":"e1","severity":"ERROR","rule":"SIM_DIV_BY_ZERO","message":"x"},
+            {"elementId":"sim","severity":"ERROR","rule":"SIM_UNKNOWN_ENTITY","message":"y"}]}"#;
+        let rep: VerifyReport = serde_json::from_str(raw).unwrap();
+        assert!(!rep.valid);
+        let by = rep.errors_by_element();
+        assert_eq!(by["e1"][0].rule, "SIM_DIV_BY_ZERO");
+        assert!(by.contains_key("sim"));
     }
 }
